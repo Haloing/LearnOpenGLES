@@ -8,6 +8,13 @@
 
 #import "ViewController.h"
 
+typedef struct {
+    GLKVector3 positionCoords;
+    
+    GLKVector2 textureCoords;
+    
+} SceneVertex;
+
 @interface ViewController () {
     
     // 声明GLuint类型变量，用于存放本例中顶点数据的缓存标识符
@@ -18,19 +25,15 @@
 
 @end
 
-typedef struct {
-    GLKVector3 positionCoords;
-    
-} SceneVertex;
+@implementation ViewController
 
 static const SceneVertex vertices[] = {
     
-    {{  0.0,  0.5, 0.0}},
-    {{ -0.5, -0.5, 0.0}},
-    {{  0.5, -0.5, 0.0}},
+    {{  0.0,  0.5, 0.0},{0.5,1.0}},
+    {{ -0.5, -0.5, 0.0},{0.0,0.0}},
+    {{  0.5, -0.5, 0.0},{1.0,0.0}},
 };
 
-@implementation ViewController
 
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -58,17 +61,23 @@ static const SceneVertex vertices[] = {
     self.baseEffect.useConstantColor = GL_TRUE;
     
     self.baseEffect.constantColor = GLKVector4Make(1.0,  // red
-                                                   0.0,  // green
-                                                   0.0,  // blue
-                                                   0.0); // alpha
+                                                   1.0,  // green
+                                                   1.0,  // blue
+                                                   1.0); // alpha
     
-    glClearColor(0.0, 0.0, 0.0, 1.0);
+    glClearColor(1.0, 1.0, 1.0, 1.0);
     
     glGenBuffers(1, &vertexBufferID);
     glBindBuffer(GL_ARRAY_BUFFER, vertexBufferID);
     
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
     
+    NSString *imagePath = [[NSBundle mainBundle] pathForResource:@"wall" ofType:@"jpg"];
+    CGImageRef imageRef = [UIImage imageWithContentsOfFile:imagePath].CGImage;
+    GLKTextureInfo *textureInfo = [GLKTextureLoader textureWithCGImage:imageRef options:nil error:NULL];
+    
+    self.baseEffect.texture2d0.name = textureInfo.name;
+    self.baseEffect.texture2d0.target = textureInfo.target;
 }
 
 - (void)update{
@@ -78,14 +87,9 @@ static const SceneVertex vertices[] = {
 - (void)glkView:(GLKView *)view drawInRect:(CGRect)rect {
     
     /*
-     iOS的OpenGL中里有2个着色器， 一个是GLKBaseEffect，为了方便OpenGL ES 1.0转移到2.0的通用着色器。
-     一个是OpenGL ES 2.0新添加的可编程着色器，使用跨平台的着色语言。
-     实例化基础效果实例，如果没有GLKit与GLKBaseEffect类，就需要为这个简单的例子编写一个小的GPU程序，使用2.0的Shading Language，
-     而GLKBaseEffect会在需要的时候自动的构建GPU程序。这里使用GLKBaseEffect来做着色器
+     iOS的OpenGL中里有2个着色器， 一个是GLKBaseEffect，为了方便OpenGL ES 1.0转移到2.0的通用着色器。 一个是OpenGL ES 2.0新添加的可编程着色器，使用跨平台的着色语言。实例化基础效果实例，如果没有GLKit与GLKBaseEffect类，就需要为这个简单的例子编写一个小的GPU程序，使用2.0的Shading Language，而GLKBaseEffect会在需要的时候自动的构建GPU程序。这里使用GLKBaseEffect来做着色器
      
-     “prepareToDraw”方法，是让“效果Effect”针对当前“Context”的状态进行一些配置，
-     它始终把“GL_TEXTURE_PROGRAM”状态定位到“Effect”对象的着色器上。
-     此外，如果Effect使用了纹理，它也会修改“GL_TEXTURE_BINDING_2D”。
+     “prepareToDraw”方法，是让“效果Effect”针对当前“Context”的状态进行一些配置，它始终把“GL_TEXTURE_PROGRAM”状态定位到“Effect”对象的着色器上。此外，如果Effect使用了纹理，它也会修改“GL_TEXTURE_BINDING_2D”。
      */
     
     [self.baseEffect prepareToDraw];
@@ -93,6 +97,7 @@ static const SceneVertex vertices[] = {
     // 前两行为渲染前的“清除”操作，清除颜色缓冲区和深度缓冲区中的内容。
     glClear(GL_COLOR_BUFFER_BIT);
     
+    //glBindBuffer(GL_ARRAY_BUFFER, vertexBufferID);
     // 启动顶点缓存渲染操作
     glEnableVertexAttribArray(GLKVertexAttribPosition);
     
@@ -105,7 +110,14 @@ static const SceneVertex vertices[] = {
      第五个参数：可以称为"步幅"，指定了没哥顶点的保存需要多少个字节。简单点就是指定了GPU从一个顶点的内存碍事转到下一个顶点的内存开始位置需要跳过多少字节
      第六个参数：告诉OpenGL ES可以从当前绑定的顶点缓存的开始位置访问顶点数据
      */
-    glVertexAttribPointer(GLKVertexAttribPosition, 3, GL_FLOAT, GL_FALSE, sizeof(SceneVertex), NULL);
+    
+    GLsizei positionOffset = offsetof(SceneVertex, positionCoords);
+    glVertexAttribPointer(GLKVertexAttribPosition, 3, GL_FLOAT, GL_FALSE, sizeof(SceneVertex), NULL + positionOffset);
+    
+    
+    GLsizei textureOffset = offsetof(SceneVertex, textureCoords);
+    glEnableVertexAttribArray(GLKVertexAttribTexCoord0);
+    glVertexAttribPointer(GLKVertexAttribTexCoord0, 2, GL_FLOAT, GL_FALSE, sizeof(SceneVertex), NULL + textureOffset);
     
     /*
      告诉OpenGL ES如何使用缓存数据之后就可以调用glDrawArrays()函数通过这些数据来绘制图形了
@@ -113,12 +125,9 @@ static const SceneVertex vertices[] = {
      第二个参数：指定缓存内的需要渲染的第一个顶点的位置
      第三个参数：需要渲染的顶点数量
      */
+    
     glDrawArrays(GL_TRIANGLES, 0, 3);
-}
-
-- (void)didReceiveMemoryWarning {
-    [super didReceiveMemoryWarning];
-    // Dispose of any resources that can be recreated.
+    
 }
 
 @end
